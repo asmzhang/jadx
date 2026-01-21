@@ -4,7 +4,10 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Point;
+import java.awt.event.ActionEvent;
 
+import javax.swing.AbstractAction;
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
@@ -99,12 +102,48 @@ public final class ClassCodeContentPanel extends AbstractCodeContentPanel implem
 			this.initView();
 		});
 
+		JButton saveSmaliBtn = new JButton(new AbstractAction("Save") {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				if (smaliCodePanel.getCodeArea() instanceof SmaliArea) {
+					((SmaliArea) smaliCodePanel.getCodeArea()).saveSmali();
+				}
+			}
+		});
+
+		JButton exportSmaliBtn = new JButton(new AbstractAction("Export") {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				if (smaliCodePanel.getCodeArea() instanceof SmaliArea) {
+					((SmaliArea) smaliCodePanel.getCodeArea()).exportSmali();
+				}
+			}
+		});
+
+		JButton resetSmaliBtn = new JButton(new AbstractAction("Reset") {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				if (smaliCodePanel.getCodeArea() instanceof SmaliArea) {
+					((SmaliArea) smaliCodePanel.getCodeArea()).resetSmali();
+				}
+			}
+		});
+
 		JToolBar trailing = new JToolBar();
 		trailing.setFloatable(false);
 		trailing.setBorder(null);
-		// trailing.add(Box.createHorizontalGlue());
 		trailing.addSeparator(new Dimension(50, 1));
 		trailing.add(splitCheckBox);
+		trailing.addSeparator();
+		trailing.add(saveSmaliBtn);
+		trailing.add(exportSmaliBtn);
+		trailing.add(resetSmaliBtn);
 		tabbedPane.putClientProperty(TABBED_PANE_TRAILING_COMPONENT, trailing);
 	}
 

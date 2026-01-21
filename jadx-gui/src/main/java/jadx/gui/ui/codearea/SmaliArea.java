@@ -12,7 +12,10 @@ import java.util.Map;
 
 import javax.swing.AbstractAction;
 import javax.swing.Icon;
+import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.EditorKit;
@@ -39,6 +42,8 @@ import jadx.gui.device.debugger.BreakpointManager;
 import jadx.gui.device.debugger.DbgUtils;
 import jadx.gui.settings.JadxSettings;
 import jadx.gui.treemodel.JClass;
+import jadx.gui.treemodel.JEditableNode;
+import jadx.gui.treemodel.JEditableSmaliClass;
 import jadx.gui.treemodel.JNode;
 import jadx.gui.treemodel.TextNode;
 import jadx.gui.ui.panel.ContentPanel;
@@ -57,8 +62,11 @@ public final class SmaliArea extends AbstractCodeArea {
 
 	private final JNode textNode;
 	private final JCheckBoxMenuItem cbUseSmaliV2;
+	private final JCheckBoxMenuItem cbEditMode;
 	private boolean curVersion = false;
+	private boolean editableMode = false;
 	private SmaliModel model;
+	private JEditableSmaliClass editableSmaliClass;
 
 	SmaliArea(ContentPanel contentPanel, JClass node) {
 		super(contentPanel, node);
@@ -83,7 +91,19 @@ public final class SmaliArea extends AbstractCodeArea {
 				settings.sync();
 			}
 		});
+
+		cbEditMode = new JCheckBoxMenuItem("Editable Mode", editableMode);
+		cbEditMode.setAction(new AbstractAction("Editable Mode") {
+			private static final long serialVersionUID = -1111111202103170741L;
+
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				toggleEditMode();
+			}
+		});
+
 		getPopupMenu().add(cbUseSmaliV2);
+		getPopupMenu().add(cbEditMode);
 		switchModel();
 	}
 
@@ -121,7 +141,149 @@ public final class SmaliArea extends AbstractCodeArea {
 		if (model != null) {
 			model.unload();
 		}
-		model = shouldUseSmaliPrinterV2() ? new DebugModel() : new NormalModel(this);
+		if (editableMode && editableSmaliClass != null) {
+			model = new EditableModel();
+		} else {
+			model = shouldUseSmaliPrinterV2() ? new DebugModel() : new NormalModel(this);
+		}
+	}
+
+	/**
+	 * 切换编辑模式
+	 */
+	private void toggleEditMode() {
+		editableMode = cbEditMode.isSelected();
+		cbEditMode.setState(editableMode);
+
+		if (editableMode) {
+			enableEditMode();
+		} else {
+			disableEditMode();
+		}
+
+		switchModel();
+		refresh();
+	}
+
+	/**
+	 * 启用编辑模式
+	 */
+	private void enableEditMode() {
+		try {
+			if (editableSmaliClass == null) {
+				editableSmaliClass = new JEditableSmaliClass(getJClass());
+			}
+			setEditable(true);
+			setCloseCurlyBraces(true);
+			setCloseMarkupTags(true);
+			setAutoIndentEnabled(true);
+			setClearWhitespaceLinesEnabled(true);
+			LOG.info("Editable mode enabled for class: {}", getJClass().getFullName());
+		} catch (Exception e) {
+			LOG.error("Failed to enable editable mode", e);
+			JOptionPane.showMessageDialog(this,
+					"Failed to enable editable mode: " + e.getMessage(),
+					"Error",
+					JOptionPane.ERROR_MESSAGE);
+			cbEditMode.setSelected(false);
+			editableMode = false;
+		}
+	}
+
+	/**
+	 * 禁用编辑模式
+	 */
+	private void disableEditMode() {
+		setEditable(false);
+		if (editableSmaliClass != null) {
+			editableSmaliClass.close();
+			editableSmaliClass = null;
+		}
+		LOG.info("Editable mode disabled for class: {}", getJClass().getFullName());
+	}
+
+	/**
+	 * 保存编辑的Smali代码
+	 */
+	public void saveSmali() {
+		if (!editableMode || editableSmaliClass == null) {
+			return;
+		}
+
+		try {
+			String content = getText();
+			editableSmaliClass.save(content);
+			JOptionPane.showMessageDialog(this,
+					"Smali code saved successfully!",
+					"Success",
+					JOptionPane.INFORMATION_MESSAGE);
+			LOG.info("Smali code saved for class: {}", getJClass().getFullName());
+		} catch (Exception e) {
+			LOG.error("Failed to save smali code", e);
+			JOptionPane.showMessageDialog(this,
+					"Failed to save smali code: " + e.getMessage(),
+					"Error",
+					JOptionPane.ERROR_MESSAGE);
+		}
+	}
+
+	/**
+	 * 导出Smali代码到文件
+	 */
+	public void exportSmali() {
+		if (!editableMode || editableSmaliClass == null) {
+			return;
+		}
+
+		try {
+			saveSmali();
+			java.nio.file.Path exportPath = java.nio.file.Files.createTempFile("jadx_smali_export_", ".smali");
+			editableSmaliClass.exportSmali(exportPath);
+			JOptionPane.showMessageDialog(this,
+					"Smali code exported to: " + exportPath.toAbsolutePath() + "\n" +
+					"You can now use external tools (like smali) to compile it.",
+					"Export Success",
+					JOptionPane.INFORMATION_MESSAGE);
+			LOG.info("Smali code exported to: {}", exportPath);
+		} catch (Exception e) {
+			LOG.error("Failed to export smali code", e);
+			JOptionPane.showMessageDialog(this,
+					"Failed to export smali code: " + e.getMessage(),
+					"Error",
+					JOptionPane.ERROR_MESSAGE);
+		}
+	}
+
+	/**
+	 * 重置为原始Smali代码
+	 */
+	public void resetSmali() {
+		if (!editableMode || editableSmaliClass == null) {
+			return;
+		}
+
+		int result = JOptionPane.showConfirmDialog(this,
+				"Are you sure you want to reset to original Smali code? All changes will be lost.",
+				"Confirm Reset",
+				JOptionPane.YES_NO_OPTION);
+
+		if (result == JOptionPane.YES_OPTION) {
+			try {
+				editableSmaliClass.reset();
+				setText(editableSmaliClass.getCurrentSmaliCode());
+				JOptionPane.showMessageDialog(this,
+						"Smali code reset to original!",
+						"Success",
+						JOptionPane.INFORMATION_MESSAGE);
+				LOG.info("Smali code reset for class: {}", getJClass().getFullName());
+			} catch (Exception e) {
+				LOG.error("Failed to reset smali code", e);
+				JOptionPane.showMessageDialog(this,
+						"Failed to reset smali code: " + e.getMessage(),
+						"Error",
+						JOptionPane.ERROR_MESSAGE);
+			}
+		}
 	}
 
 	public void scrollToDebugPos(int pos) {
@@ -187,6 +349,28 @@ public final class SmaliArea extends AbstractCodeArea {
 		@Override
 		public void unload() {
 
+		}
+	}
+
+	/**
+	 * 可编辑模式
+	 */
+	private class EditableModel extends SmaliModel {
+
+		public EditableModel() {
+			getContentPanel().getMainWindow().getEditorThemeManager().apply(SmaliArea.this);
+			setSyntaxEditingStyle(SYNTAX_STYLE_SMALI);
+		}
+
+		@Override
+		public void load() {
+			if (editableSmaliClass != null) {
+				setText(editableSmaliClass.getCurrentSmaliCode());
+			}
+		}
+
+		@Override
+		public void unload() {
 		}
 	}
 
